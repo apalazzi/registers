@@ -18,6 +18,9 @@
 #ifndef INCLUDE_REGISTER_HPP_
 #define INCLUDE_REGISTER_HPP_
 
+// uncomment this to disable exceptions
+//#define REGISTER_DISABLE_EXCEPTIONS
+
 #include <cstdint>
 #include <cstddef>
 #include <stdexcept>
@@ -51,10 +54,12 @@ public:
 		raw &= (!mask(pos, len));
 		raw |= (val << pos);
 	}
+#ifndef REGISTER_DISABLE_EXCEPTIONS
 	void set(const T val) {
 		check_val_size(val, len);
 		set(val, std::nothrow);
 	}
+#endif
 	T get() const {
 		return (raw & mask(pos, len)) >> pos;
 	}
@@ -75,13 +80,14 @@ public:
 		raw &= (~mask(idx * step + pos0, len));
 		raw |= (val << (idx * step + pos0));
 	}
-	;
 
+#ifndef REGISTER_DISABLE_EXCEPTIONS
 	void set(const size_t idx, const T val) {
 		check_index_overflow(idx);
 		check_val_size(val, len);
 		set(idx, val, std::nothrow);
 	}
+#endif
 	T get(const size_t idx,
 			const std::nothrow_t nothrow __attribute__((unused))) const {
 		return (raw & mask(idx * step + pos0, len)) >> (idx * step + pos0);
