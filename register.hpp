@@ -1,12 +1,14 @@
 /*
- Copyright 2019 Andrea Palazzi <palazziandrea@yahoo.it>
+ Copyright 2017 Andrea Palazzi <palazziandrea@yahoo.it>
 
- Thid is free software: you can redistribute it and/or modify
+ This file is part of halarm.
+
+ halarm is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
 
- This software is distributed in the hope that it will be useful,
+ halarm is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
@@ -18,127 +20,167 @@
 #ifndef INCLUDE_REGISTER_HPP_
 #define INCLUDE_REGISTER_HPP_
 
-// uncomment this to disable exceptions
-//#define REGISTER_DISABLE_EXCEPTIONS
-
 #include <cstdint>
 #include <cstddef>
 #include <stdexcept>
+#include <halarm.hpp>
 
-namespace mcu {
-
-auto mask = [](const uint32_t pos, const uint32_t len) {
-	return (((1 << len) - 1) << (pos));
+namespace halarm {
+//using addr_t=uint32_t; // FIXME: move it somewhere
+template<typename T> T mask(const uint32_t pos, const uint32_t len) {
+    return (((static_cast<T>(1) << len) - 1) << (pos));
 };
 
-template<typename T> constexpr void check_val_size(const T val, const uint32_t len) {
-	if (val >= (1u << len)) {
-		throw(std::domain_error("Value exceeds Bitfield size."));
-	}
+template<typename T> void check_val_size(const T val,
+                                         const uint32_t len) {
+    if (val >= (static_cast<T>(1) << len)) {
+        throw(std::domain_error("Value exceeds Bitfield size."));
+    }
 }
 
-template<typename T, size_t pos, size_t len> struct Bitfield {
-public:
-	Bitfield() {
-		static_assert(len>0, "Bitfield has zero size.");
-		static_assert(pos+len<=sizeof(T)*8, "Bitfield size exceeds storage type capacity.");
-	}
-	~Bitfield() = default;
-	Bitfield& operator=(const T val) {
-		set(val);
-		return *this;
-	}
-
-	void set(const T val,
-			const std::nothrow_t nothrow __attribute__((unused))) {
-		raw &= (!mask(pos, len));
-		raw |= (val << pos);
-	}
-#ifndef REGISTER_DISABLE_EXCEPTIONS
-	void set(const T val) {
-		check_val_size(val, len);
-		set(val, std::nothrow);
-	}
-#endif
-	T get() const {
-		return (raw & mask(pos, len)) >> pos;
-	}
-private:
-	volatile T raw;
+enum class RegisterType { // TODO: find a better name
+    read, write, read_write
 };
 
-template<typename T, size_t pos0, size_t len, size_t step> struct BitfieldArray {
-	friend class reference;
+template<typename T, uint32_t pos, uint32_t len, typename VAL = T,
+    RegisterType RT = RegisterType::read_write> class Bit {
 public:
-	BitfieldArray() {
-		static_assert(len>0, "BitfieldArray len should be >0.");
-		static_assert(step>=len, "BitfieldArray step should be > len.");
-		static_assert(pos0+len<=sizeof(T)*8, "BitfieldArray pos0+len exceeds type capacity.");
-	}
-	void set(const size_t idx, const T val,
-			const std::nothrow_t nothrow __attribute__((unused))) {
-		raw &= (~mask(idx * step + pos0, len));
-		raw |= (val << (idx * step + pos0));
-	}
+    Bit() = delete;
+    Bit(uint32_t address) :  // FIXME: use addr_t instead
+        raw(reinterpret_cast<T*>(address)) {
+        check();
+    }
+    Bit(T *const address) :
+        raw(address) {
+        check();
+    }
+    ~Bit() = default;
+    Bit& operator=(const T val) {
+        set(val);
+        return *this;
+    }
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> operator bool() {
+            return static_cast<bool>(get());
+    }
 
-#ifndef REGISTER_DISABLE_EXCEPTIONS
-	void set(const size_t idx, const T val) {
-		check_index_overflow(idx);
-		check_val_size(val, len);
-		set(idx, val, std::nothrow);
-	}
-#endif
-	T get(const size_t idx,
-			const std::nothrow_t nothrow __attribute__((unused))) const {
-		return (raw & mask(idx * step + pos0, len)) >> (idx * step + pos0);
-	}
-	T get(const size_t idx) const {
-		check_index_overflow(idx);
-		return get(idx, std::nothrow);
-	}
+    void set(const VAL val,
+             const std::nothrow_t nothrow __attribute__((unused))) {
+        *raw &= (~mask<T>(pos, len));
+        *raw |= (static_cast<T>(val) << pos);
+    }
+    void set(const VAL val) {
+        check_val_size(static_cast<T>(val), len);
+        set(val, std::nothrow);
+    }
+    VAL get() const {
+        return (*raw & mask<T>(pos, len)) >> pos;
+    }
+private:
+    volatile T *const raw;
+    void check() const noexcept {
+        static_assert(len>0, "Bitfield has zero size.");
+        static_assert(pos+len<=sizeof(T)*8, "Bitfield size exceeds storage type capacity.");
+    }
+};
 
-	class reference {
-		friend class BitfieldArray;
-	public:
-		reference& operator=(const T val) {
-			bf.set(idx, val);
-			return *this;
-		}
+//
+//template<typename T, uint32_t pos, uint32_t len, typename VAL,
+//    RegisterType RT>
+//class Bit<typename T, uint32_t pos, 1, typename VAL,
+//RegisterType RT> {
+//    public:
+//    operator bool() const {return get();}
+//    bool operator!() const {return !get();}
+//};
 
-		reference& operator=(const reference &other) {
-			// TODO: check if other is compatible with this
-			bf.set(idx, other.bf.test(other.idx));
-			return *this;
-		}
+template<typename T, uint32_t pos0, uint32_t len, uint32_t step,
+    RegisterType RT = RegisterType::read_write, typename IDX = int> class BitArray {
+    friend class reference;
+public:
+    BitArray() = delete;
+    BitArray(const uint32_t address) :
+        raw(reinterpret_cast<T*>(address)) { // FIXME: use addr_t instead?
+        check();
+    }
+    BitArray(uint32_t *const address) :
+        raw(address) {
+        check();
+    }
+    void set(const uint32_t idx,
+             const T val,
+             const std::nothrow_t nothrow __attribute__((unused))) {
+        T m=mask<T>(idx * step + pos0, len);
+        *raw &= (~m);
+        *raw |= (val << (idx * step + pos0));
+    }
 
-		operator T() const {
-			return bf.get(idx);
-		}
+    void set(const uint32_t idx, const T val) {
+        check_index_overflow(idx);
+        check_val_size(val, len);
+        set(idx, val, std::nothrow);
+    }
+    T get(const uint32_t idx,
+          const std::nothrow_t nothrow __attribute__((unused))) const {
+        return (*raw & mask<T>(idx * step + pos0, len))
+            >> (idx * step + pos0);
+    }
+    T get(const uint32_t idx) const {
+        check_index_overflow(idx);
+        return get(idx, std::nothrow);
+    }
 
-	private:
-		reference(const size_t idx_, BitfieldArray &bf_) :
-				idx(idx_), bf(bf_) {
-		}
-
-		const size_t idx;
-		BitfieldArray &bf;
-	};
-	T operator[](const size_t idx) const {
-		return get(idx);
-	}
-
-	reference operator[](const size_t idx) {
-		return reference(idx, *this);
-	}
+    class reference {
+        friend class BitArray;
+    public:
+        reference& operator=(const T val) {
+            bf.set(idx, val);
+            return *this;
+        }
+        reference& operator=(const reference &other) {
+            // TODO: check if other is compatible with this
+            bf.set(idx, other.bf.test(other.idx));
+            return *this;
+        }
+        operator T() const {
+            return bf.get(idx);
+        }
+        // T operator~() {}; // TODO: bitwise invert
+    private:
+        reference(const uint32_t idx_, BitArray &bf_) :
+            idx(idx_), bf(bf_) {
+        }
+        const uint32_t idx;
+        BitArray &bf;
+    };
+    T operator[](const IDX idx) const { // FIXME: constexpr?
+        return get(static_cast<uint32_t>(idx));
+    }
+    reference operator[](const IDX idx) {
+        return reference(static_cast<uint32_t>(idx), *this);
+    }
 
 private:
-	volatile T raw;
-	void check_index_overflow(const size_t idx) const {
-		if (pos0 + step * idx >= sizeof(T) * 8) {
-			throw(std::out_of_range("BitfieldArray: idx exceeds type capacity."));
-		}
-	}
+    volatile T *const raw;
+    constexpr void check_index_overflow(const uint32_t idx) const {
+        if (pos0 + step * idx >= sizeof(T) * 8) {
+            throw(std::out_of_range("BitfieldArray: idx exceeds type capacity."));
+        }
+    }
+    constexpr void check() const noexcept {
+        static_assert(len>0, "BitfieldArray len should be >0.");
+        static_assert(step>=len, "BitfieldArray step should be > len.");
+        static_assert(pos0+len<=sizeof(T)*8, "BitfieldArray pos0+len exceeds type capacity.");
+    }
 };
-} // namespace mcu
+
+volatile uint32_t* mem(const uint32_t loc);
+inline void reg_set(volatile reg_t *addr, const size_t bit);
+inline void reg_clear(volatile reg_t *addr, const size_t bit);
+inline void reg_flip(volatile reg_t *addr, const size_t bit);
+inline bool reg_check(volatile reg_t *addr, const size_t bit);
+
+inline uint32_t shift_bit(const uint32_t x);
+
+} // namespace alarm
 
 #endif /* INCLUDE_REGISTER_H_ */
