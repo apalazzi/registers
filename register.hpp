@@ -62,6 +62,9 @@ public:
     template<typename U=T, typename = typename std::enable_if<len==1, U>::type> operator bool() {
             return static_cast<bool>(get());
     }
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> bool operator==(const bool other) {
+            return static_cast<bool>(get())==other;
+    }
 
     void set(const VAL val,
              const std::nothrow_t nothrow __attribute__((unused))) {
@@ -83,23 +86,13 @@ private:
     }
 };
 
-//
-//template<typename T, uint32_t pos, uint32_t len, typename VAL,
-//    RegisterType RT>
-//class Bit<typename T, uint32_t pos, 1, typename VAL,
-//RegisterType RT> {
-//    public:
-//    operator bool() const {return get();}
-//    bool operator!() const {return !get();}
-//};
-
-template<typename T, uint_t pos0, uint_t len, uint_t step,
-    RegisterType RT = RegisterType::read_write, typename IDX = int> class BitArray {
+template<typename T, uint_t pos0, uint_t len, uint_t step=len, uint_t posN=(8*sizeof(T)-pos0)/step,
+    RegisterType RT = RegisterType::read_write, typename IDX = uint_t> class BitArray {
     friend class reference;
 public:
     BitArray() = delete;
     BitArray(const addr_t address) :
-        raw(reinterpret_cast<T*>(address)) { // FIXME: use addr_t instead?
+        raw(reinterpret_cast<T*>(address)) {
         check();
     }
     BitArray(addr_t *const address) :
@@ -158,7 +151,12 @@ public:
     reference operator[](const IDX idx) {
         return reference(static_cast<uint_t>(idx), *this);
     }
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> operator bool() {
+            return static_cast<bool>(get());
+    }
 
+    // TODO: add operator bool() if len=1
+    // TODO: add some range check if IDX is int type to avoid accessing bits that should not be accessed
 private:
     volatile T *const raw;
     constexpr void check_index_overflow(const uint_t idx) const {
