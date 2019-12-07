@@ -55,15 +55,24 @@ public:
         check();
     }
     ~Bit() = default;
-    Bit& operator=(const T val) {
+    Bit& operator=(const VAL val) {
         set(val);
         return *this;
+    }
+    bool operator==(VAL other) {
+            return get()==other; // TODO: use underlying_type?
     }
     template<typename U=T, typename = typename std::enable_if<len==1, U>::type> operator bool() {
             return static_cast<bool>(get());
     }
-    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> bool operator==(const bool other) {
-            return static_cast<bool>(get())==other;
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> void set() {
+            set(true);
+    }
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> void reset() {
+            set(false);
+    }
+    template<typename U=T, typename = typename std::enable_if<len==1, U>::type> void flip() {
+            set(!get());
     }
 
     void set(const VAL val,
@@ -76,7 +85,7 @@ public:
         set(val, std::nothrow);
     }
     VAL get() const {
-        return (*raw & mask<T>(pos, len)) >> pos;
+        return static_cast<VAL>((*raw & mask<T>(pos, len)) >> pos);
     }
 private:
     volatile T *const raw;
