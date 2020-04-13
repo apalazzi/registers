@@ -48,8 +48,30 @@ enum class RegisterType {  // TODO: find a better name
     read,
     write,
     read_write,
-	read_clear_w0
+    read_clear_w0,
+    read_clear_w1
 };
+
+constexpr bool can_read(RegisterType rt) {
+    return (rt == RegisterType::read ||
+            rt == RegisterType::read_write ||
+            rt == RegisterType::read_clear_w0);
+}
+
+constexpr bool can_write(RegisterType rt) {
+    return (rt == RegisterType::write ||
+            rt == RegisterType::read_write);
+}
+
+constexpr bool can_set(RegisterType rt) {
+    return (can_write(rt) ||
+            rt == RegisterType::read_clear_w1);
+}
+
+constexpr bool can_reset(RegisterType rt) {
+    return (can_write(rt) ||
+            rt == RegisterType::read_clear_w1);
+}
 
 template <typename T, uint_t pos, uint_t len,
           typename VAL= T,
@@ -70,7 +92,11 @@ class Bit {
     }
     bool operator==(VAL other) {
         return get() ==
-               other;  // TODO: use underlying_type?
+               other;
+    }
+    bool operator!=(VAL other) {
+        return get() !=
+               other;
     }
     template <typename U= T,
               typename= typename std::enable_if<len == 1,
@@ -79,24 +105,25 @@ class Bit {
         return static_cast<bool>(get());
     }
     template <typename U= T,
-              typename= typename std::enable_if<len == 1,
-                                                U>::type>
+              typename= typename std::enable_if<
+                  len == 1 && can_set(RT), U>::type>
     void set() {
         set(true);
     }
     template <typename U= T,
-              typename= typename std::enable_if<len == 1,
-                                                U>::type>
+              typename= typename std::enable_if<
+                  len == 1 && can_reset(RT), U>::type>
     void reset() {
         set(false);
     }
     template <typename U= T,
-              typename= typename std::enable_if<len == 1,
-                                                U>::type>
+              typename= typename std::enable_if<
+                  len == 1 && can_write(RT), U>::type>
     void flip() {
         set(!get());
     }
 
+    // TODO: add SFINAE here
     void set(const VAL val, const std::nothrow_t nothrow
              __attribute__((unused))) {
         *raw&= (~mask<T>(pos, len));
