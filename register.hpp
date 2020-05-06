@@ -38,11 +38,6 @@ constexpr int n_bits() {
     return sizeof(T) * CHAR_BIT;
 }
 
-// template<typename T> constexpr max_N(const uint_t pos0,
-// const uint_t step) { 	return (n_bits<T>() - pos0) /
-// step;
-//}
-
 template<typename T>
 T mask(const uint_t pos, const uint_t len) {
     return (((static_cast<T>(1) << len) - 1) << (pos));
