@@ -40,12 +40,12 @@ constexpr int n_bits() {
 
 template<typename T>
 T mask(const uint_t pos, const uint_t len) {
-    return (((static_cast<T>(1) << len) - 1) << (pos));
+    return (((static_cast<T>(1u) << len) - 1) << (pos));
 }
 
 template<typename T>
 void check_val_size(const T val, const uint_t len) {
-    if (val >= (static_cast<T>(1) << len)) {
+    if (val >= (static_cast<T>(1u) << len)) {
         throw(std::domain_error(
             "Value exceeds storage size."));
     }
@@ -80,17 +80,17 @@ constexpr bool can_reset(RegisterType rt) {
             rt == RegisterType::read_clear_w0);
 }
 
-template<typename T, uint_t pos, uint_t len,
-         typename VAL= T,
+template<typename base_t, uint_t pos, uint_t len,
+         typename VAL= base_t,
          RegisterType RT= RegisterType::read_write>
 class Bit {
 public:
     Bit()= delete;
     Bit(addr_t address)
-        : raw(reinterpret_cast<T*>(address)) {
+        : raw(reinterpret_cast<base_t* const>(address)) {
         check();
     }
-    Bit(T* const address): raw(address) { check(); }
+    Bit(base_t* const address): raw(address) { check(); }
     ~Bit()= default;
     Bit& operator=(const VAL val) {
         set(val);
@@ -98,25 +98,25 @@ public:
     }
     bool operator==(VAL other) { return get() == other; }
     bool operator!=(VAL other) { return get() != other; }
-    template<typename U= T,
+    template<typename U= base_t,
              typename=
                  typename std::enable_if<len == 1, U>::type>
     operator bool() {
         return static_cast<bool>(get());
     }
-    template<typename U= T,
+    template<typename U= base_t,
              typename= typename std::enable_if<
                  len == 1 && can_set(RT), U>::type>
     void set() {
         set(true);
     }
-    template<typename U= T,
+    template<typename U= base_t,
              typename= typename std::enable_if<
                  len == 1 && can_reset(RT), U>::type>
     void reset() {
         set(false);
     }
-    template<typename U= T,
+    template<typename U= base_t,
              typename= typename std::enable_if<
                  len == 1 && can_write(RT), U>::type>
     void flip() {
@@ -126,24 +126,28 @@ public:
     // TODO: add SFINAE here
     void set(const VAL val, const std::nothrow_t nothrow
              __attribute__((unused))) {
-        *raw&= (~mask<T>(pos, len));
-        *raw|= (static_cast<T>(val) << pos);
+        *raw&= (~mask<base_t>(pos, len));
+        *raw|= (static_cast<base_t>(val) << pos);
     }
     void set(const VAL val) {
-        check_val_size(static_cast<T>(val), len);
+        check_val_size(static_cast<base_t>(val), len);
         set(val, std::nothrow);
     }
     VAL get() const {
         return static_cast<VAL>(
-            (*raw & mask<T>(pos, len)) >> pos);
+            (*raw & mask<base_t>(pos, len)) >> pos);
+    }
+
+    VAL get_raw() const {
+        return *raw;
     }
 
 private:
-    volatile T* const raw;
+    volatile base_t* const raw;
     void check() const noexcept {
         static_assert(len > 0, "Bitfield has zero size.");
         static_assert(
-            pos + len <= sizeof(T) * 8,
+            pos + len <= n_bits<base_t>(),
             "Bitfield size exceeds storage type capacity.");
     }
 };
@@ -164,7 +168,7 @@ public:
         : raw(reinterpret_cast<base_t*>(address)) {
         check();
     }
-    BitArray(addr_t* const address): raw(address) {
+    BitArray(base_t* const address): raw(address) {
         check();
     }
     void set(const IDX idx, const base_t val,
@@ -194,6 +198,10 @@ public:
         return get(idx, std::nothrow);
     }
 
+    base_t get_raw() const {
+        return *raw;
+    }
+
     class reference {
         friend class BitArray;
 
@@ -204,7 +212,7 @@ public:
         }
         reference& operator=(const reference& other) {
             // TODO: check if other is compatible with this
-            bf.set(idx, other.bf.test(other.idx));
+            bf.set(idx, other.bf.get(other.idx));
             return *this;
         }
         operator base_t() const { return bf.get(idx); }
