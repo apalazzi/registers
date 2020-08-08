@@ -126,9 +126,8 @@ public:
     // TODO: add SFINAE here
     void set(const VAL val, const std::nothrow_t nothrow
              __attribute__((unused))) {
-        *raw&= (~mask<base_t>(pos, len));
-        *raw|= (static_cast<base_t>(val) << pos);
-    }
+        *raw = ((*raw)&~mask<base_t>(pos, len))|(static_cast<base_t>(val) << pos);
+}
     void set(const VAL val) {
         check_val_size(static_cast<base_t>(val), len);
         set(val, std::nothrow);
@@ -175,9 +174,7 @@ public:
              const std::nothrow_t nothrow
              __attribute__((unused))) {
         auto [m_idx, b_idx]= get_idx(idx);
-        base_t m= mask<base_t>(b_idx, len);
-        *(raw + m_idx)&= (~m);
-        *(raw + m_idx)|= (val << b_idx);
+        *(raw + m_idx) = ((*(raw+m_idx)&~mask<base_t>(b_idx, len))|(val << b_idx));
     }
 
     void set(const IDX idx, const base_t val) {
