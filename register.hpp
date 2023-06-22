@@ -144,7 +144,7 @@ public:
         check_val_size(static_cast<base_t>(val), len);
         set(val, std::nothrow);
     }
-    volatile VAL get() const {
+    VAL get() const {
         return static_cast<volatile VAL>(
             (*raw & mask<base_t>(pos, len)) >> pos);
     }
